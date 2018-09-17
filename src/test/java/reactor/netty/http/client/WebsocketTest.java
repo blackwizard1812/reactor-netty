@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
+import io.netty.handler.codec.CorruptedFrameException;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
@@ -515,6 +516,95 @@ public class WebsocketTest {
 		Assert.assertThat(serverSelectedProtocol.get(), is("proto1"));
 		Assert.assertThat(clientSelectedProtocol.get(), is("proto1"));
 		Assert.assertThat(clientSelectedProtocolWhenSimplyUpgrading.get(), is("proto1"));
+	}
+
+    @Test
+    public void testMaxFramePayloadLengthFailed() {
+        httpServer = HttpServer.create()
+                .port(0)
+                .handle((in, out) -> out.sendWebsocket((i, o) -> o.sendString(Mono.just("12345678901"))))
+                .wiretap()
+                .bindNow();
+
+        Mono<Void> response = HttpClient.create()
+                        .port(httpServer.address().getPort())
+                        .websocket(10)
+                        .handle((in, out) -> in.receive()
+                                .asString()
+                                .map(srv -> srv))
+                        .log()
+                        .then();
+
+        StepVerifier.create(response)
+                .expectError(CorruptedFrameException.class)
+                .verify(Duration.ofSeconds(30));
+    }
+
+    @Test
+    public void testMaxFramePayloadLengthSuccess() {
+        httpServer = HttpServer.create()
+                .port(0)
+                .handle((in, out) -> out.sendWebsocket((i, o) -> o.sendString(Mono.just("12345678901"))))
+                .wiretap()
+                .bindNow();
+
+        Mono<Void> response = HttpClient.create()
+                .port(httpServer.address().getPort())
+                .websocket(11)
+                .handle((in, out) -> in.receive()
+                        .asString()
+                        .map(srv -> srv))
+                .log()
+                .then();
+
+        StepVerifier.create(response)
+                .expectComplete()
+                .verify(Duration.ofSeconds(30));
+    }
+
+	@Test
+	public void testServerMaxFramePayloadLengthFailed() {
+		doTestServerMaxFramePayloadLength(10,
+				Flux.just("1", "2", "12345678901", "3"), Flux.just("1", "2"), 2);
+	}
+
+	@Test
+	public void testServerMaxFramePayloadLengthSuccess() {
+		doTestServerMaxFramePayloadLength(11,
+				Flux.just("1", "2", "12345678901", "3"), Flux.just("1", "2", "12345678901", "3"), 4);
+	}
+
+	private void doTestServerMaxFramePayloadLength(int maxFramePayloadLength, Flux<String> input, Flux<String> expectation, int count) {
+		httpServer =
+				HttpServer.create()
+						.port(0)
+						.handle((req, res) -> res.sendWebsocket(null, maxFramePayloadLength, (in, out) ->
+								out.options(NettyPipeline.SendOptions::flushOnEach)
+										.sendObject(in.aggregateFrames()
+												.receiveFrames()
+												.map(WebSocketFrame::content)
+												.map(byteBuf -> byteBuf.toString(Charset.defaultCharset()))
+												.map(TextWebSocketFrame::new))))
+						.wiretap()
+						.bindNow();
+
+		ReplayProcessor<String> output = ReplayProcessor.create();
+		HttpClient.create()
+				.port(httpServer.address().getPort())
+				.websocket()
+				.uri("/")
+				.handle((in, out) -> out.sendString(input)
+						.then(in.aggregateFrames()
+								.receiveFrames()
+								.map(WebSocketFrame::content)
+								.map(byteBuf -> byteBuf.toString(Charset.defaultCharset()))
+								.take(count)
+								.subscribeWith(output)
+								.then()))
+				.blockLast(Duration.ofSeconds(30));
+
+		Assertions.assertThat(output.collectList().block(Duration.ofSeconds(30)))
+				.isEqualTo(expectation.collectList().block(Duration.ofSeconds(30)));
 	}
 
 
