@@ -35,6 +35,7 @@ public interface HttpClientRequest extends HttpInfos {
 	 * @return this outbound
 	 */
 	HttpClientRequest addCookie(Cookie cookie);
+
 	/**
 	 * Add an outbound http header, appending the value if the header is already set.
 	 *
@@ -44,13 +45,6 @@ public interface HttpClientRequest extends HttpInfos {
 	 * @return this outbound
 	 */
 	HttpClientRequest addHeader(CharSequence name, CharSequence value);
-
-	/**
-	 * Return  true if headers and status have been sent to the client
-	 *
-	 * @return true if headers and status have been sent to the client
-	 */
-	boolean hasSentHeaders();
 
 	/**
 	 * Set an outbound header, replacing any pre-existing value.
@@ -78,13 +72,6 @@ public interface HttpClientRequest extends HttpInfos {
 	 * @return true if redirected will be followed
 	 */
 	boolean isFollowRedirect();
-
-	/**
-	 * set the request keepAlive if true otherwise remove the existing connection keep alive header
-	 *
-	 * @return this outbound
-	 */
-	HttpClientRequest keepAlive(boolean keepAlive);
 
 	/**
 	 * Return the previous redirections or empty array

@@ -117,12 +117,10 @@ public class HttpServerTests {
 		                              .port(c.address().getPort())
 		                              .tcpConfiguration(TcpClient::noSSL)
 		                              .wiretap()
+		                              .keepAlive(false)
 		                              .post()
 		                              .uri("/return")
-		                              .send((r, out) -> {
-		                                  r.keepAlive(false);
-		                                  return out.send(src);
-		                              })
+		                              .send(src)
 		                              .responseSingle((res, buf) -> Mono.just(res.status().code())))
 		    .collectList()
 		    .block();
@@ -365,7 +363,7 @@ public class HttpServerTests {
 		HttpServer server = HttpServer.create()
 		                              .port(123)
 		                              .host(("foo"))
-		                              .compress();
+		                              .compress(true);
 		assertThat(server.tcpConfiguration().configure())
 		          .isNotSameAs(HttpServer.DEFAULT_TCP_SERVER)
 		          .isNotSameAs(server.tcpConfiguration().configure());
